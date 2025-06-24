@@ -114,9 +114,6 @@
 .cv-dot.today {
   background: #2563eb;
 }
-.cv-dot.selected {
-  /* This style is no longer needed */
-}
 .cv-legend {
   display: flex;
   gap: 24px;
