@@ -1,22 +1,30 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
+import './Front.jsx'
 
 export default function Login() {
-  const [form, setForm] = useState({
-    email: '',
-    password: ''
-  });
+  const [form, setForm] = useState({ username: '', password: '' });
   const navigate = useNavigate();
 
-  const handleChange = e => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+  const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = e => {
+  const handleSubmit = async e => {
     e.preventDefault();
-    // Here you would handle actual login logic
-    alert('Login successful! (Demo)');
+    const response = await fetch('http://localhost:8000/api/login/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    const data = await response.json();
+    if (response.ok) {
+      // Save token if you want to use it later
+      localStorage.setItem('access', data.access);
+      alert('Login successful!');
+      navigate('/front'); // Redirect to Front.jsx
+    } else {
+      alert(data.error || 'Login failed');
+    }
   };
 
   return (
@@ -24,14 +32,14 @@ export default function Login() {
       <form className="login-form" onSubmit={handleSubmit}>
         <h2 className="login-title">Login</h2>
         <label>
-          Email
+          Username
           <input
-            type="email"
-            name="email"
-            value={form.email}
+            type="text"
+            name="username"
+            value={form.username}
             onChange={handleChange}
+            placeholder="Username"
             required
-            autoComplete="email"
           />
         </label>
         <label>
@@ -41,8 +49,8 @@ export default function Login() {
             name="password"
             value={form.password}
             onChange={handleChange}
+            placeholder="Password"
             required
-            autoComplete="current-password"
           />
         </label>
         <button className="login-btn" type="submit">Login</button>

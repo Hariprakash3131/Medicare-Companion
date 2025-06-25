@@ -4,6 +4,7 @@ import "./Front.css";
 
 export default function Front() {
   const navigate = useNavigate();
+  const role = localStorage.getItem('role'); // "patient" or "caretaker"
 
   return (
     <div className="front-root">
@@ -42,7 +43,11 @@ export default function Front() {
             <li>View your medication calendar</li>
             <li>Large, easy-to-use interface</li>
           </ul>
-          <button className="front-btn-patient" onClick={() => navigate('/patient')}>
+          <button
+            className="front-btn-patient role-btn"
+            disabled={role === 'caretaker'}
+            onClick={() => navigate('/patient')}
+          >
             Continue as Patient
           </button>
         </div>
@@ -66,7 +71,11 @@ export default function Front() {
             <li>View detailed reports</li>
             <li>Receive email alerts</li>
           </ul>
-          <button className="front-btn-caretaker" onClick={() => navigate('/caretaker')}>
+          <button
+            className="front-btn-caretaker role-btn"
+            disabled={role === 'patient'}
+            onClick={() => navigate('/caretaker')}
+          >
             Continue as Caretaker
           </button>
         </div>

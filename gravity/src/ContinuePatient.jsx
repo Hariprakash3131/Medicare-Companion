@@ -1,13 +1,137 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { fetchWithAuth } from './utils/api';
 import "./ContinuePatient.css";
 
 export default function ContinuePatient() {
     const navigate = useNavigate();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [isMedicationTaken, setIsMedicationTaken] = useState(false);
+    const [records, setRecords] = useState([]);
+    const [successMsg, setSuccessMsg] = useState('');
     const fileInputRef = useRef(null);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const [isMedicationTaken] = useState(false);
+    const [completedImageUrl, setCompletedImageUrl] = useState(null);
+
+    // Move fetchRecords to top-level so it can be reused
+    const fetchRecords = async () => {
+        try {
+            const response = await fetchWithAuth('http://localhost:8000/api/medication-records/');
+            if (response.ok) {
+                const data = await response.json();
+                console.log('GET response:', data);
+                setRecords(data);
+            } else {
+                setRecords([]);
+            }
+        } catch (err) {
+            console.error('Failed to fetch records:', err);
+            setRecords([]);
+        }
+    };
+
+    // Fetch records on mount and when marking as taken
+    useEffect(() => {
+        fetchRecords();
+    }, [currentDate]);
+
+    useEffect(() => {
+        return () => {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
+        };
+    }, [previewUrl]);
+
+    const handlePhotoChange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            setSelectedFile(file);
+            setPreviewUrl(URL.createObjectURL(file));
+        }
+    };
+
+    const handleTakePhotoClick = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
+
+    const handleMarkAsTaken = async () => {
+        const formData = new FormData();
+        formData.append('date', selectedDate.toISOString().split('T')[0]);
+        formData.append('taken', '1');
+        if (selectedFile) {
+            formData.append('proof_photo', selectedFile);
+        }
+
+        try {
+            const token = localStorage.getItem('access');
+            if (!token) {
+                setSuccessMsg('You are not logged in. Please log in again.');
+                return;
+            }
+            const response = await fetch('http://localhost:8000/api/medication-records/', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: formData,
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setCompletedImageUrl(data.proof_photo);
+                setSuccessMsg('Medication marked as taken successfully!');
+                setSelectedFile(null);
+                setPreviewUrl(null);
+                await fetchRecords();
+            } else {
+                const errorText = await response.text();
+                setSuccessMsg('Failed to mark as taken: ' + errorText);
+                console.error('POST error:', errorText);
+            }
+        } catch (err) {
+            setSuccessMsg('Failed to mark as taken: ' + err.message);
+        }
+    };
+
+    // Stats calculations
+    const getStreak = () => {
+        const today = new Date().toISOString().split('T')[0];
+        let streak = 0;
+        let date = new Date(today);
+        const takenDates = new Set(records.filter(r => r.taken).map(r => r.date));
+        while (takenDates.has(date.toISOString().split('T')[0])) {
+            streak++;
+            date.setDate(date.getDate() - 1);
+        }
+        return streak;
+    };
+
+    const getTodayStatus = () => {
+        const today = new Date().toISOString().split('T')[0];
+        const todayRecord = records.find(r => r.date === today);
+        if (todayRecord && todayRecord.taken) {
+            return <span style={{color: 'green', fontWeight: 'bold'}}>&#10003;</span>;
+        }
+        return 'Missed';
+    };
+
+    const getMonthlyRate = () => {
+        const now = new Date();
+        const month = now.getMonth();
+        const year = now.getFullYear();
+        const monthlyRecords = records.filter(r => {
+            const d = new Date(r.date);
+            return d.getMonth() === month && d.getFullYear() === year;
+        });
+        const takenCount = monthlyRecords.filter(r => r.taken).length;
+        const total = monthlyRecords.length || 1; // avoid division by zero
+        return Math.round((takenCount / total) * 100);
+    };
 
     const handleDateClick = (day) => {
         if (day) {
@@ -21,23 +145,6 @@ export default function ContinuePatient() {
 
     const handleNextMonth = () => {
         setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
-    };
-
-    const handleTakePhotoClick = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
-        }
-    };
-
-    const handlePhotoChange = (event) => {
-        const file = event.target.files[0];
-        if (file) {
-            alert(`Photo selected: ${file.name}`);
-        }
-    };
-
-    const handleMarkAsTaken = () => {
-        setIsMedicationTaken(true);
     };
 
     const monthName = currentDate.toLocaleString('default', { month: 'long' });
@@ -75,6 +182,10 @@ export default function ContinuePatient() {
         return `Medication for ${selectedDate.toLocaleString('default', { month: 'long' })} ${selectedDate.getDate()}`;
     };
 
+    useEffect(() => {
+        console.log('records:', records);
+    }, [records]);
+
     return (
         <div className="cp-root">
             <header className="cp-header">
@@ -105,15 +216,15 @@ export default function ContinuePatient() {
                     </div>
                     <div className="cp-greeting-stats">
                         <div className="cp-greeting-stat">
-                            <div className="cp-greeting-stat-value">0</div>
+                            <div className="cp-greeting-stat-value">{getStreak()}</div>
                             <div className="cp-greeting-stat-label">Day Streak</div>
                         </div>
                         <div className="cp-greeting-stat">
-                            <div className="cp-greeting-stat-value">○</div>
+                            <div className="cp-greeting-stat-value">{getTodayStatus()}</div>
                             <div className="cp-greeting-stat-label">Today's Status</div>
                         </div>
                         <div className="cp-greeting-stat">
-                            <div className="cp-greeting-stat-value">0%</div>
+                            <div className="cp-greeting-stat-value">{getMonthlyRate()}%</div>
                             <div className="cp-greeting-stat-label">Monthly Rate</div>
                         </div>
                     </div>
@@ -151,6 +262,15 @@ export default function ContinuePatient() {
                                         8:00 AM
                                     </div>
                                 </div>
+                                {completedImageUrl && (
+                                    <div style={{ textAlign: 'center', marginTop: 16 }}>
+                                        <img
+                                            src={completedImageUrl}
+                                            alt="Proof"
+                                            style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, boxShadow: '0 2px 8px #0001' }}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <>
@@ -167,22 +287,54 @@ export default function ContinuePatient() {
                                     <div className="cp-medication-set-time" title="Scheduled time">🕗 8:00 AM</div>
                                 </div>
                                 <div className="cp-medication-photo-box">
-                                    <div className="cp-medication-photo-icon">
-                                        <svg width="48" height="48" fill="none" viewBox="0 0 24 24">
-                                            <rect x="3" y="5" width="18" height="14" rx="3" stroke="#b0b0b0" strokeWidth="2" fill="#fff" />
-                                            <circle cx="12" cy="12" r="3" stroke="#b0b0b0" strokeWidth="2" fill="#fff" />
-                                        </svg>
-                                    </div>
-                                    <div className="cp-medication-photo-text">
-                                        <div className="cp-medication-photo-title">Add Proof Photo <span className="cp-optional">(Optional)</span></div>
-                                        <div className="cp-medication-photo-desc">Take a photo of your medication or pill organizer as confirmation</div>
-                                        <button className="cp-photo-btn" aria-label="Take Photo" onClick={handleTakePhotoClick}>
-                                            <span className="cp-photo-btn-icon" aria-hidden="true">📷</span> Take Photo
-                                        </button>
-                                        <input type="file" accept="image/*" className="visually-hidden" ref={fileInputRef} onChange={handlePhotoChange} />
-                                    </div>
+                                    {!previewUrl ? (
+                                        <>
+                                            <div className="cp-medication-photo-icon">
+                                                <svg width="48" height="48" fill="none" viewBox="0 0 24 24">
+                                                    <rect x="3" y="5" width="18" height="14" rx="3" stroke="#b0b0b0" strokeWidth="2" fill="#fff" />
+                                                    <circle cx="12" cy="12" r="3" stroke="#b0b0b0" strokeWidth="2" fill="#fff" />
+                                                </svg>
+                                            </div>
+                                            <div className="cp-medication-photo-text">
+                                                <div className="cp-medication-photo-title">
+                                                    Add Proof Photo <span className="cp-optional">(Optional)</span>
+                                                </div>
+                                                <div className="cp-medication-photo-desc">
+                                                    Take a photo of your medication or pill organizer as confirmation
+                                                </div>
+                                                <button className="cp-photo-btn" aria-label="Take Photo" onClick={handleTakePhotoClick}>
+                                                    <span className="cp-photo-btn-icon" aria-hidden="true">📷</span> Take Photo
+                                                </button>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="visually-hidden"
+                                                    ref={fileInputRef}
+                                                    onChange={handlePhotoChange}
+                                                />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="cp-image-preview">
+                                            <img
+                                                src={previewUrl}
+                                                alt="Preview"
+                                                style={{ maxWidth: '200px', maxHeight: '200px', borderRadius: '8px', margin: '0 auto', display: 'block' }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
-                                <button className="cp-taken-btn" aria-label="Mark as Taken" onClick={handleMarkAsTaken}>✓ Mark as Taken</button>
+                                <button className="cp-taken-btn" aria-label="Mark as Taken" onClick={handleMarkAsTaken}>
+                                    ✓ Mark as Taken
+                                </button>
+                                {successMsg && (
+                                    <div className="cp-success-msg">
+                                        <div>
+                                            <img src={previewUrl} alt="Proof" style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, margin: '0 auto', display: 'block' }} />
+                                        </div>
+                                        <div>Medication marked as taken successfully!</div>
+                                    </div>
+                                )}
                             </>
                         )}
                     </section>
@@ -223,9 +375,21 @@ export default function ContinuePatient() {
                                             }
                                         }
 
+                                        const isTaken = records.some(r => r.date === day.toISOString().split('T')[0] && r.taken);
+                                        if (isTaken && isToday) {
+                                            classNames.push("cp-calendar-taken");
+                                        }
+
                                         return (
-                                            <td key={dayIndex} className={classNames.join(" ")} onClick={() => isCurrentMonth && handleDateClick(day)}>
+                                            <td
+                                                key={dayIndex}
+                                                className={classNames.join(" ")}
+                                                onClick={() => isCurrentMonth && handleDateClick(day)}
+                                            >
                                                 {day.getDate()}
+                                                {isTaken && isToday && (
+                                                    <span className="cp-calendar-dot cp-calendar-dot-green" style={{marginLeft: 4}}></span>
+                                                )}
                                             </td>
                                         );
                                     })}

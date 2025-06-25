@@ -1,3 +1,4 @@
+import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Home from './Home';
 import Front from './Front';
@@ -16,6 +17,7 @@ function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/front" element={<Front />} />
       <Route path="/signup" element={<SignUp />} />
       <Route path="/patient" element={<ContinuePatient />} />
       <Route path="/caretaker" element={<CareTacker />}>

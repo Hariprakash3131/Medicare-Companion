@@ -15,10 +15,20 @@ export default function SignUp() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = e => {
+  const handleSubmit = async e => {
     e.preventDefault();
-    // Here you would handle actual signup logic
-    alert('Sign up successful! (Demo)');
+    const response = await fetch('http://localhost:8000/api/register/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form)
+    });
+    const data = await response.json();
+    if (response.ok) {
+      alert('Sign up successful!');
+      navigate('/login');
+    } else {
+      alert(data.error || 'Sign up failed');
+    }
   };
 
   return (
